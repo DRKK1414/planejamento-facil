@@ -1,0 +1,65 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Planejamento Fácil</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Nunito+Sans:wght@400;700&display=swap">
+<link rel="stylesheet" href="site.css"></head><body>
+<div class="pf">
+  <header class="topo">
+    <h1 class="marca"><span>Planejamento Fácil</span></h1>
+    <p class="sub">Escreva aqui, gere o Word e arraste no Atende.</p>
+  </header>
+
+  <nav class="abas" role="tablist">
+    <button role="tab" id="aba-inicio" data-aba="inicio" aria-selected="true">Início</button>
+    <button role="tab" id="aba-planejamento" data-aba="planejamento" aria-selected="false">Planejamento</button>
+    <button role="tab" id="aba-diario" data-aba="diario" aria-selected="false">Diário</button>
+    <button role="tab" id="aba-especial" data-aba="especial" aria-selected="false">Diário da Educação Especial</button>
+  </nav>
+
+  <main>
+    <section id="inicio" class="secao" role="tabpanel">
+      <div>
+        <h2>Como funciona</h2>
+        <p class="explica">Você escreve o planejamento e o diário aqui, com calma, do jeito que preferir. Quando for lançar no sistema, o site monta o Word no modelo certo e a extensão Planejamento Fácil preenche o Atende para você.</p>
+      </div>
+      <ol class="passos">
+        <li><h3>Escreva aqui</h3><p>Cada coisa tem a sua caixinha. Tudo fica guardado neste computador, então dá para escrever um pouco por dia.</p></li>
+        <li><h3>Gere o Word</h3><p>Clique em “Gerar Word”. O arquivo vai para a pasta Downloads, já no modelo que a extensão entende.</p></li>
+        <li><h3>Arraste no Atende</h3><p>Abra o planejamento ou o diário no Atende e arraste o Word para o botão azul “Arraste o Word aqui”. Confira e pronto.</p></li>
+      </ol>
+      <div>
+        <h2>O que você quer fazer?</h2>
+        <p class="explica">Escolha uma opção. Dá para trocar a qualquer hora pelas abas lá em cima.</p>
+      </div>
+      <div class="escolhas">
+        <button class="escolha" data-ir="planejamento"><strong>Planejamento</strong><span>Professora regente: cabeçalho, objetivos, conteúdo, habilidades e o resto do projeto do trimestre.</span></button>
+        <button class="escolha" data-ir="diario"><strong>Diário</strong><span>Professora regente: o que foi feito em cada aula da semana.</span></button>
+        <button class="escolha" data-ir="especial"><strong>Diário da Educação Especial</strong><span>Professora de apoio: o que o aluno fez em cada aula. Entra junto com o texto da regente, sem apagar nada.</span></button>
+      </div>
+      <div>
+        <h2>Dúvidas</h2>
+        <details><summary>Onde ficam guardadas as minhas coisas?</summary>
+          <p>Neste computador, dentro deste navegador. Ninguém mais vê, nem a gente. Se você limpar os dados do navegador ou trocar de computador, elas não vão junto. Por isso, de vez em quando, use “Salvar cópia de segurança” lá embaixo e guarde o arquivo no seu e-mail ou pen drive.</p></details>
+        <details><summary>A extensão apaga o que já está no Atende?</summary>
+          <p>Não. No diário, ela escreve sempre depois do que já está no dia. Se a colega já escreveu, o texto dela fica, e o seu entra no fim. No planejamento, ela só preenche os campos. Quem confere e manda para análise é você.</p></details>
+        <details><summary>Sou professora de educação especial. Como faço?</summary>
+          <p>Use a aba “Diário da Educação Especial”. Escreva o que o seu aluno fez em cada aula. No Atende, o texto entra em Observações, depois do que a regente escreveu. Se a regente ainda não escreveu nada naquele dia, a extensão coloca um ponto (.) na Descrição, como a Secretaria orienta, para o sistema deixar salvar. Educação especial não faz planejamento.</p></details>
+        <details><summary>Posso escrever no celular?</summary>
+          <p>Pode abrir o site no celular e escrever, mas o que você guarda no celular fica só no celular. Para lançar no Atende, gere o Word no computador onde a extensão está instalada.</p></details>
+      </div>
+    </section>
+
+    <section id="planejamento" class="secao" role="tabpanel" hidden></section>
+    <section id="diario" class="secao" role="tabpanel" hidden></section>
+    <section id="especial" class="secao" role="tabpanel" hidden></section>
+  </main>
+
+  <footer class="rodape">
+    <div class="botoes">
+      <button class="btn pequeno" id="backup-salvar">Salvar cópia de segurança</button>
+      <button class="btn pequeno" id="backup-abrir">Restaurar cópia</button>
+      <input type="file" id="backup-arquivo" accept=".json,application/json" class="oculto-arquivo">
+      <span id="backup-msg" class="salvo" role="status"></span>
+    </div>
+    <p>Seus textos ficam só neste computador. O site não pede a senha do Atende e não envia nada para lugar nenhum.</p>
+  </footer>
+</div>
+<script src="site.js"></script></body></html>
