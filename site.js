@@ -2,17 +2,46 @@
 // Tudo fica no navegador dela (localStorage). Nada é enviado para servidor nenhum.
 (() => {
   const CHAVE = 'planejamento-facil-dados';
+  // Mesma parte pública da extensão (licenca.js). Vazia = versão de teste, sem pedir chave.
+  const CHAVE_PUBLICA = 'XNFrkGiO63POiPKJFwekNHR2TqI8FLrV977l4_0wGZQ.Usdfr6pmn4018Rg18s9T3M5ZydUXUQYKUdRNF4Dh_rg';
   const $ = (s, r = document) => r.querySelector(s);
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const novoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   // ---------- Dados ----------
-  let dados = { planejamentos: [], diario: [], especial: [], ultimo: {} };
+  // aulas: o que a professora dá (turma + matéria + professor do diário). registros: 'AAAA-MM-DD|idDaAula' -> texto do dia.
+  let dados = { versao: 2, aulas: [], registros: {}, planejamentos: [], ultimo: {} };
   try { const s = JSON.parse(localStorage.getItem(CHAVE)); if (s && typeof s === 'object') dados = { ...dados, ...s }; } catch (e) { }
   let avisoSemGuardar = false;
   function guardar() {
     try { localStorage.setItem(CHAVE, JSON.stringify(dados)); return true; }
     catch (e) { avisoSemGuardar = true; return false; }
+  }
+
+  // Acha (ou cria) a aula com essa turma, matéria e professor
+  const norm = s => String(s || '').trim().toLowerCase();
+  function aulaDe(turma, disciplina, professor, especial) {
+    let a = dados.aulas.find(a => norm(a.turma) === norm(turma) && norm(a.disciplina) === norm(disciplina) && norm(a.professor) === norm(professor) && !!a.especial === !!especial);
+    if (!a) { a = { id: novoId(), turma: turma || '', disciplina: disciplina || '', professor: professor || '', especial: !!especial, dias: [1, 2, 3, 4, 5] }; dados.aulas.push(a); }
+    return a;
+  }
+  const junta = (a, b) => [a, b].filter(t => t && t.trim()).join('\n');
+  // Lista antiga (versão 1: dados.diario e dados.especial) -> aulas + registros
+  function importarAntigo(origem) {
+    for (const i of origem.diario || []) {
+      if (!i.data) continue;
+      const a = aulaDe(i.turma, i.disciplina, i.professor, false), k = i.data + '|' + a.id, r = dados.registros[k] || {};
+      dados.registros[k] = { descricao: junta(r.descricao, i.descricao), observacoes: junta(r.observacoes, i.observacoes) };
+    }
+    for (const i of origem.especial || []) {
+      if (!i.data) continue;
+      const a = aulaDe(i.turma, i.disciplina, i.professor, true), k = i.data + '|' + a.id, r = dados.registros[k] || {};
+      dados.registros[k] = { texto: junta(r.texto, i.texto) };
+    }
+  }
+  if (dados.diario || dados.especial) {
+    importarAntigo(dados);
+    delete dados.diario; delete dados.especial; dados.versao = 2; guardar();
   }
 
   // ---------- Datas ----------
@@ -114,19 +143,18 @@
     return docx(c, false);
   }
 
-  function wordDiario(tipo, itens) {
+
+  // itens: { data, turma, disciplina, professor, descricao, observacoes }. Educação especial vai com a descrição vazia e o texto em Observações.
+  function wordDiario(a, b) {
+    // aceita também o jeito antigo: wordDiario('especial' | 'diario', itens)
+    const itens = (Array.isArray(a) ? a : b).map(i => i.texto !== undefined && !i.observacoes ? { ...i, descricao: i.descricao || '', observacoes: i.texto, especial: true } : i);
     const turmas = [...new Set(itens.map(i => i.turma || ''))];
-    let c = par(tipo === 'especial' ? 'DIÁRIO DA SEMANA · EDUCAÇÃO ESPECIAL' : 'DIÁRIO DA SEMANA', { b: true, tam: 20, centro: true, cor: '1F4E79', depois: 4 });
+    let c = par('DIÁRIO DA SEMANA', { b: true, tam: 20, centro: true, cor: '1F4E79', depois: 4 });
     c += dica('Gerado pelo site Planejamento Fácil. No Atende, abra a Área do Professor (Diários de Classe) e arraste este arquivo no botão azul: a extensão abre o diário de cada turma e matéria. Não mude os títulos das colunas.'
-      + (tipo === 'especial' ? ' O texto entra em Observações, depois do que já estiver no dia.' : ''));
+      + (itens.some(i => i.especial) ? ' O texto da Educação Especial entra em Observações, depois do que já estiver no dia.' : ''));
     if (turmas.length === 1) { c += tabela([1800, 5400], [['Turma', turmas[0]]], false); c += par(''); }
-    if (tipo === 'especial') {
-      c += tabela([1400, 1700, 2300, 2700, 6800], [['Data', 'Turma', 'Disciplina', 'Professor(a)', 'O que o aluno fez (Educação Especial)'],
-        ...itens.map(i => [br(i.data), i.turma, i.disciplina, i.professor || '', i.texto])], true);
-    } else {
-      c += tabela([1300, 1600, 2100, 2500, 4900, 2500], [['Data', 'Turma', 'Disciplina', 'Professor(a)', 'O que foi feito na aula', 'Observações'],
-        ...itens.map(i => [br(i.data), i.turma, i.disciplina, i.professor || '', i.descricao, i.observacoes])], true);
-    }
+    c += tabela([1300, 1600, 2100, 2500, 4900, 2500], [['Data', 'Turma', 'Disciplina', 'Professor(a)', 'O que foi feito na aula', 'Observações'],
+      ...itens.map(i => [br(i.data), i.turma, i.disciplina, i.professor || '', i.descricao || '', i.observacoes || ''])], true);
     return docx(c, true);
   }
 
@@ -148,20 +176,248 @@
   }
   const limpaNome = s => String(s || '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
 
+  // ---------- Licença (a mesma chave da extensão) ----------
+  const b64 = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
+  async function lerChave(texto) {
+    const t = String(texto || '').replace(/\s+/g, '');
+    const m = t.match(/^PF1-([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+    if (!m) return { ok: false, erro: 'Essa chave está incompleta. Copie de novo, inteira, começando em PF1-.' };
+    try {
+      const [x, y] = CHAVE_PUBLICA.split('.');
+      const pub = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', x, y, ext: true }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      if (!await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, b64(m[2]), new TextEncoder().encode(m[1]))) return { ok: false, erro: 'Essa chave não é válida.' };
+      const d = JSON.parse(new TextDecoder().decode(b64(m[1])));
+      if (d.v && d.v < hojeISO()) return { ok: false, erro: `Essa chave venceu em ${br(d.v)}. Fale com quem te vendeu para renovar.` };
+      return { ok: true, m: String(d.m), v: d.v || '', chave: t };
+    } catch (e) { return { ok: false, erro: 'Essa chave não é válida.' }; }
+  }
+  const temChrome = () => { try { return !!(window.chrome && chrome.storage && chrome.storage.local); } catch (e) { return false; } };
+  async function chaveGuardada() {
+    let t = '';
+    try { t = localStorage.getItem('pf-licenca') || ''; } catch (e) { }
+    if (!t && temChrome()) t = await new Promise(res => { try { chrome.storage.local.get('licenca', o => res((o && o.licenca) || '')); } catch (e) { res(''); } });
+    return t;
+  }
+  function guardarChave(t) {
+    try { localStorage.setItem('pf-licenca', t); } catch (e) { }
+    if (temChrome()) try { chrome.storage.local.set({ licenca: t }); } catch (e) { }
+  }
+  function mostrarLicenca(c) {
+    $('#lic-info').textContent = c ? `Licença da matrícula ${c.m}${c.v ? ', válida até ' + br(c.v) : ''}` : 'Versão de teste';
+  }
+  function abrirPortao(erro) {
+    $('#app').hidden = true; $('#portao').hidden = false;
+    const e = $('#portao-erro'); e.hidden = !erro; e.textContent = erro || '';
+    $('#portao-chave').focus();
+  }
+  $('#portao-form').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const c = await lerChave($('#portao-chave').value);
+    if (!c.ok) return abrirPortao(c.erro);
+    guardarChave(c.chave); mostrarLicenca(c);
+    $('#portao').hidden = true; $('#app').hidden = false; $('#portao-chave').value = '';
+  });
+  $('#lic-trocar').onclick = () => abrirPortao('');
+
   // ---------- Abas ----------
-  const ABAS = ['inicio', 'planejamento', 'diario', 'especial'];
+  const ABAS = ['diario', 'planejamento', 'aulas', 'ajuda'];
   function abrirAba(nome) {
-    if (!ABAS.includes(nome)) nome = 'inicio';
+    if (!ABAS.includes(nome)) nome = 'diario';
     for (const a of ABAS) {
       $('#' + a).hidden = a !== nome;
       $('#aba-' + a).setAttribute('aria-selected', String(a === nome));
     }
     if (nome === 'planejamento') desenharPlanejamentos();
-    if (nome === 'diario' || nome === 'especial') desenharDiario(nome);
+    if (nome === 'diario') desenharDiario();
+    if (nome === 'aulas') desenharAulas();
     try { localStorage.setItem(CHAVE + '-aba', nome); } catch (e) { }
   }
-  document.querySelectorAll('[data-aba]').forEach(b => b.addEventListener('click', () => { abrirAba(b.dataset.aba); window.scrollTo(0, 0); }));
-  document.querySelectorAll('[data-ir]').forEach(b => b.addEventListener('click', () => { abrirAba(b.dataset.ir); window.scrollTo(0, 0); }));
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-aba], [data-ir]');
+    if (b) { abrirAba(b.dataset.aba || b.dataset.ir); window.scrollTo(0, 0); }
+  });
+
+  const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  const nomeDias = d => d.length === 5 ? 'todos os dias' : d.length ? [...d].sort().map(n => DIAS_CURTOS[n]).join(', ') : 'nenhum dia';
+
+  // ---------- Minhas aulas ----------
+  let editandoAula = null;
+  function desenharAulas() {
+    const sec = $('#aulas');
+    const ed = editandoAula ? dados.aulas.find(a => a.id === editandoAula) : null;
+    const u = ed || dados.ultimo.aula || dados.aulas[dados.aulas.length - 1] || {};
+    const dias = ed ? ed.dias : (u.dias || [1, 2, 3, 4, 5]);
+    const lista = [...dados.aulas].sort((a, b) => a.turma.localeCompare(b.turma) || a.disciplina.localeCompare(b.disciplina));
+    sec.innerHTML = `
+      <div class="titulo-secao"><h2>Minhas aulas</h2>
+        <p class="explica">Cadastre uma vez cada turma e matéria que você dá. No Diário, elas aparecem sozinhas no dia certo, uma caixinha para cada.</p></div>
+      <form class="cartao formulario" id="aula-form">
+        <h3>${ed ? 'Editar aula' : 'Nova aula'}</h3>
+        <div class="grade3">
+          <label class="campo">Turma <input id="aula-turma" required placeholder="Ex.: 5º Ano 4" value="${esc(u.turma || '')}"></label>
+          <label class="campo">Matéria <input id="aula-disciplina" required placeholder="Ex.: Matemática" value="${esc(ed ? ed.disciplina : '')}"></label>
+          <label class="campo">Professor(a) do diário <input id="aula-professor" required placeholder="Ex.: Silvana Strey Miranda" value="${esc(u.professor || '')}"></label>
+        </div>
+        <p class="dica">Escreva turma, matéria e professor como aparecem no card do Atende. A extensão só abre o diário quando os três batem.</p>
+        <fieldset class="dias"><legend>Dias em que tem essa aula</legend>
+          ${[1, 2, 3, 4, 5].map(n => `<label class="chip"><input type="checkbox" value="${n}"${dias.includes(n) ? ' checked' : ''}><span>${DIAS_CURTOS[n]}</span></label>`).join('')}
+        </fieldset>
+        <label class="marcar"><input type="checkbox" id="aula-especial"${(ed ? ed.especial : u.especial) ? ' checked' : ''}>
+          <span><strong>Sou professora de Educação Especial nesta aula</strong><small>No professor do diário, ponha a regente da turma. O seu texto entra em Observações, depois do que ela escrever.</small></span></label>
+        <div class="botoes"><button class="btn principal" type="submit">${ed ? 'Salvar alteração' : 'Adicionar aula'}</button>
+          ${ed ? '<button class="btn" type="button" id="aula-cancelar">Cancelar</button>' : ''}
+          <span class="salvo" id="aula-salvo" role="status"></span></div>
+      </form>
+      <div class="lista">${lista.length ? lista.map(a => `
+        <div class="item"><div class="texto"><strong>${esc(a.disciplina)} · ${esc(a.turma)}${a.especial ? ' <span class="selo roxo">Ed. Especial</span>' : ''}</strong>
+          <span class="meta">${esc(a.professor)} · ${nomeDias(a.dias)}</span></div>
+          <div class="botoes"><button class="btn pequeno" data-editar-aula="${a.id}">Editar</button><button class="btn pequeno perigo" data-apagar-aula="${a.id}">Excluir</button></div></div>`).join('')
+        : '<div class="vazio">Nenhuma aula ainda. Comece pela primeira turma e matéria do seu horário.</div>'}</div>
+      ${lista.length ? '<div class="botoes"><button class="btn principal" data-ir="diario">Ir para o Diário →</button></div>' : ''}`;
+
+    $('#aula-form').addEventListener('submit', ev => {
+      ev.preventDefault();
+      const v = id => $('#aula-' + id).value.trim();
+      const a = ed || { id: novoId() };
+      a.turma = v('turma'); a.disciplina = v('disciplina'); a.professor = v('professor'); a.especial = $('#aula-especial').checked;
+      a.dias = [...sec.querySelectorAll('.dias input:checked')].map(i => Number(i.value));
+      if (!a.dias.length) a.dias = [1, 2, 3, 4, 5];
+      if (!ed) dados.aulas.push(a);
+      dados.ultimo.aula = { turma: a.turma, professor: a.professor, especial: a.especial, dias: a.dias };
+      editandoAula = null;
+      const ok = guardar();
+      desenharAulas();
+      $('#aula-salvo').textContent = ok ? `${a.disciplina} · ${a.turma} guardada. Pode cadastrar a próxima.` : 'Não consegui guardar neste navegador.';
+      $('#aula-disciplina').focus();
+    });
+    const canc = $('#aula-cancelar'); if (canc) canc.onclick = () => { editandoAula = null; desenharAulas(); };
+    sec.querySelectorAll('[data-editar-aula]').forEach(b => b.onclick = () => { editandoAula = b.dataset.editarAula; desenharAulas(); window.scrollTo(0, 0); });
+    sec.querySelectorAll('[data-apagar-aula]').forEach(b => b.onclick = () => {
+      const id = b.dataset.apagarAula;
+      const n = Object.keys(dados.registros).filter(k => k.endsWith('|' + id)).length;
+      if (b.dataset.certeza !== '1') { b.dataset.certeza = '1'; b.textContent = n ? `Apaga também ${n} anotaç${n > 1 ? 'ões' : 'ão'}. Clique de novo` : 'Clique de novo para excluir'; return; }
+      dados.aulas = dados.aulas.filter(a => a.id !== id);
+      for (const k of Object.keys(dados.registros)) if (k.endsWith('|' + id)) delete dados.registros[k];
+      guardar(); desenharAulas();
+    });
+  }
+
+  // ---------- Diário: um dia, uma caixinha por aula ----------
+  const diaUtil = s => { const w = deISO(s).getDay(); return w === 6 ? somaDias(s, -1) : w === 0 ? somaDias(s, -2) : s; };
+  let diaAberto = diaUtil(hojeISO());
+  let mostrarTodas = false;
+  const chaveReg = (data, a) => data + '|' + a.id;
+  const temTexto = r => !!r && Object.values(r).some(t => String(t || '').trim());
+  const registro = (data, a) => dados.registros[chaveReg(data, a)];
+
+  function contagemDia(data) {
+    const w = deISO(data).getDay();
+    const doDia = dados.aulas.filter(a => a.dias.includes(w));
+    const feitas = dados.aulas.filter(a => temTexto(registro(data, a))).length;
+    return { total: Math.max(doDia.length, feitas), feitas };
+  }
+  function itensDaSemana(seg) {
+    const fim = somaDias(seg, 6), itens = [];
+    for (const [k, r] of Object.entries(dados.registros)) {
+      const [data, id] = k.split('|');
+      if (data < seg || data > fim || !temTexto(r)) continue;
+      const a = dados.aulas.find(x => x.id === id); if (!a) continue;
+      itens.push(a.especial
+        ? { data, turma: a.turma, disciplina: a.disciplina, professor: a.professor, descricao: '', observacoes: (r.texto || '').trim(), especial: true }
+        : { data, turma: a.turma, disciplina: a.disciplina, professor: a.professor, descricao: (r.descricao || '').trim(), observacoes: (r.observacoes || '').trim() });
+    }
+    return itens.sort((a, b) => a.turma.localeCompare(b.turma) || a.disciplina.localeCompare(b.disciplina) || a.professor.localeCompare(b.professor) || a.data.localeCompare(b.data));
+  }
+
+  function desenharDiario() {
+    const sec = $('#diario');
+    if (!dados.aulas.length) {
+      sec.innerHTML = `<div class="titulo-secao"><h2>Diário</h2></div>
+        <div class="boas-vindas cartao"><h3>Primeiro, cadastre as suas aulas</h3>
+          <p>Diga uma vez quais turmas e matérias você dá e em que dias. Depois é só abrir o dia e escrever em cada caixinha.</p>
+          <div class="botoes"><button class="btn principal" data-ir="aulas">Cadastrar minhas aulas</button></div></div>`;
+      return;
+    }
+    const dia = diaAberto, w = deISO(dia).getDay(), seg = segunda(dia);
+    const doDia = dados.aulas.filter(a => a.dias.includes(w) || temTexto(registro(dia, a)));
+    const resto = dados.aulas.filter(a => !doDia.includes(a));
+    const vistas = mostrarTodas ? doDia.concat(resto) : doDia;
+    const semana = itensDaSemana(seg);
+    sec.innerHTML = `
+      <div class="dia-topo">
+        <div class="nav-dia">
+          <button class="btn redondo" id="d-ant" aria-label="Dia anterior">‹</button>
+          <div class="dia-nome"><strong>${DIAS[w][0].toUpperCase() + DIAS[w].slice(1)}</strong><span>${br(dia)}</span></div>
+          <button class="btn redondo" id="d-prox" aria-label="Próximo dia">›</button>
+        </div>
+        <div class="botoes"><input type="date" id="d-data" value="${dia}" aria-label="Escolher data"><button class="btn pequeno" id="d-hoje">Hoje</button></div>
+      </div>
+      <div class="semana-tira" role="list">${[0, 1, 2, 3, 4].map(i => {
+        const d = somaDias(seg, i), c = contagemDia(d);
+        const estado = c.total && c.feitas >= c.total ? 'cheio' : c.feitas ? 'meio' : '';
+        return `<button role="listitem" class="dia-btn ${estado}${d === dia ? ' atual' : ''}" data-dia="${d}" aria-current="${d === dia}">
+          <span class="dn">${DIAS_CURTOS[i + 1]}</span><span class="dd">${brCurto(d)}</span><span class="dc">${c.total ? c.feitas + '/' + c.total : '·'}</span></button>`;
+      }).join('')}</div>
+      <div class="aulas-dia">${vistas.length ? vistas.map(a => cartaoAula(dia, a)).join('') : '<div class="vazio">Nenhuma aula cadastrada para este dia.</div>'}</div>
+      ${resto.length ? `<div class="botoes centro"><button class="btn pequeno" id="d-todas">${mostrarTodas ? 'Mostrar só as aulas deste dia' : `Mostrar as outras aulas (${resto.length})`}</button>
+        <button class="btn pequeno" data-ir="aulas">Mudar minhas aulas</button></div>` : '<div class="botoes centro"><button class="btn pequeno" data-ir="aulas">Mudar minhas aulas</button></div>'}
+      <div class="barra-semana">
+        <div><strong>Semana de ${brCurto(seg)} a ${brCurto(somaDias(seg, 4))}</strong><span id="d-resumo">${semana.length ? semana.length + (semana.length > 1 ? ' aulas anotadas' : ' aula anotada') : 'Nada anotado ainda'}</span></div>
+        <button class="btn principal" id="d-gerar"${semana.length ? '' : ' disabled'}>Gerar Word da semana</button>
+      </div>
+      <p class="aviso" id="d-msg" role="status" hidden></p>`;
+
+    const ir = d => { diaAberto = diaUtil(d); desenharDiario(); };
+    $('#d-ant').onclick = () => ir(w === 1 ? somaDias(dia, -3) : somaDias(dia, -1));
+    $('#d-prox').onclick = () => ir(w === 5 ? somaDias(dia, 3) : somaDias(dia, 1));
+    $('#d-hoje').onclick = () => ir(hojeISO());
+    $('#d-data').onchange = e => { if (e.target.value) ir(e.target.value); };
+    sec.querySelectorAll('[data-dia]').forEach(b => b.onclick = () => ir(b.dataset.dia));
+    const todas = $('#d-todas'); if (todas) todas.onclick = () => { mostrarTodas = !mostrarTodas; desenharDiario(); };
+
+    let t;
+    sec.querySelectorAll('.aula-card textarea').forEach(el => el.addEventListener('input', () => {
+      const card = el.closest('.aula-card'), a = dados.aulas.find(x => x.id === card.dataset.aula), k = chaveReg(dia, a);
+      const r = dados.registros[k] || {};
+      r[el.dataset.campo] = el.value;
+      if (temTexto(r)) dados.registros[k] = r; else delete dados.registros[k];
+      card.classList.toggle('feito', temTexto(r));
+      card.querySelector('.selo').textContent = temTexto(r) ? 'Anotado' : 'Falta anotar';
+      clearTimeout(t); t = setTimeout(() => { if (!guardar()) $('#d-resumo').textContent = 'Não consegui guardar neste navegador'; else atualizarContas(seg, dia); }, 350);
+    }));
+    $('#d-gerar').onclick = async () => {
+      const itens = itensDaSemana(seg); if (!itens.length) return;
+      const nome = limpaNome(`Diário semana ${brCurto(seg).replace('/', '-')}`) + '.docx';
+      const r = await baixar(nome, wordDiario(itens));
+      const m = $('#d-msg');
+      m.className = r === 'ok' ? 'aviso ok' : 'aviso'; m.hidden = false;
+      m.textContent = r === 'ok' ? `Word gerado: ${nome}. No Atende, abra a Área do Professor (Diários de Classe) e arraste o arquivo no botão azul. A extensão abre cada turma e matéria e preenche os dias.`
+        : r === 'cancelado' ? 'Você cancelou o download.' : 'Não consegui gerar o arquivo neste navegador.';
+    };
+  }
+  // Atualiza a tira da semana e o resumo sem redesenhar as caixinhas (para não perder o cursor)
+  function atualizarContas(seg, dia) {
+    document.querySelectorAll('#diario [data-dia]').forEach(b => {
+      const c = contagemDia(b.dataset.dia);
+      b.querySelector('.dc').textContent = c.total ? c.feitas + '/' + c.total : '·';
+      b.classList.toggle('cheio', !!c.total && c.feitas >= c.total);
+      b.classList.toggle('meio', !!c.feitas && c.feitas < c.total);
+    });
+    const n = itensDaSemana(seg).length;
+    $('#d-resumo').textContent = n ? n + (n > 1 ? ' aulas anotadas' : ' aula anotada') : 'Nada anotado ainda';
+    $('#d-gerar').disabled = !n;
+  }
+  function cartaoAula(dia, a) {
+    const r = registro(dia, a) || {}, ok = temTexto(r), id = 'c-' + a.id;
+    return `<article class="aula-card${ok ? ' feito' : ''}${a.especial ? ' especial' : ''}" data-aula="${a.id}">
+      <header><div><h3>${esc(a.disciplina)}</h3><span class="meta">${esc(a.turma)} · ${esc(a.professor)}${a.especial ? ' · Educação Especial' : ''}</span></div>
+        <span class="selo">${ok ? 'Anotado' : 'Falta anotar'}</span></header>
+      ${a.especial
+        ? `<label class="campo" for="${id}-t">O que o aluno fez<textarea id="${id}-t" data-campo="texto" rows="3">${esc(r.texto || '')}</textarea></label>`
+        : `<label class="campo" for="${id}-d">O que foi feito na aula<textarea id="${id}-d" data-campo="descricao" rows="3">${esc(r.descricao || '')}</textarea></label>
+           <label class="campo obs" for="${id}-o">Observações <small>opcional</small><textarea id="${id}-o" data-campo="observacoes" rows="1">${esc(r.observacoes || '')}</textarea></label>`}
+    </article>`;
+  }
 
   // ---------- Planejamento ----------
   let editando = null; // id do planejamento aberto
@@ -173,11 +429,11 @@
     editando = null;
     const lista = [...dados.planejamentos].sort((a, b) => (b.atualizado || 0) - (a.atualizado || 0));
     sec.innerHTML = `
-      <div><h2>Planejamento</h2>
-        <p class="explica">Um planejamento por turma e disciplina em cada trimestre. Escreva com calma: tudo é guardado sozinho enquanto você digita. Quando terminar, clique em “Gerar Word” e arraste o arquivo no Atende.</p></div>
+      <div class="titulo-secao"><h2>Planejamento</h2>
+        <p class="explica">Um planejamento por turma e matéria em cada trimestre. Tudo é guardado sozinho enquanto você digita. Quando terminar, gere o Word e arraste no Atende.</p></div>
       <div class="botoes"><button class="btn principal" id="pl-novo">Novo planejamento</button></div>
       <div class="lista">${lista.length ? lista.map(p => `
-        <div class="item"><div class="texto"><strong>${esc(p.turma || 'Sem turma')} · ${esc(p.disciplina || 'Sem disciplina')}</strong>
+        <div class="item"><div class="texto"><strong>${esc(p.disciplina || 'Sem matéria')} · ${esc(p.turma || 'Sem turma')}</strong>
           <span class="meta">${esc(p.trimestre || '')}${p.tema ? ' · ' + esc(p.tema) : ''}${p.inicio ? ' · de ' + br(p.inicio) + ' a ' + br(p.termino) : ''}</span></div>
           <div class="botoes"><button class="btn pequeno" data-abrir="${p.id}">Abrir</button><button class="btn pequeno principal" data-word="${p.id}">Gerar Word</button></div></div>`).join('')
         : '<div class="vazio">Nenhum planejamento ainda. Clique em “Novo planejamento” para começar.</div>'}</div>`;
@@ -212,15 +468,18 @@
   function desenharEditor(sec) {
     const p = dados.planejamentos.find(q => q.id === editando);
     const TRI = ['1º Trimestre', '2º Trimestre', '3º Trimestre'];
+    const regulares = dados.aulas.filter(a => !a.especial);
     sec.innerHTML = `
       <div class="botoes"><button class="btn pequeno" id="pl-voltar">← Meus planejamentos</button><span class="salvo" id="pl-salvo" role="status"></span></div>
-      <div><h2>${esc(p.disciplina || 'Novo planejamento')}${p.turma ? ' · ' + esc(p.turma) : ''}</h2>
-        <p class="explica">Escreva cada parte na sua caixa. Pode usar Enter para pular linha. Nas caixas de Instrumentos, Critérios, Objetos e Habilidades, coloque um item por linha.</p></div>
-      <div class="cabecalho">
+      <div class="titulo-secao"><h2>${esc(p.disciplina || 'Novo planejamento')}${p.turma ? ' · ' + esc(p.turma) : ''}</h2>
+        <p class="explica">Escreva cada parte na sua caixa. Nas caixas de Instrumentos, Critérios, Objetos e Habilidades, coloque um item por linha.</p></div>
+      <div class="cartao cabecalho">
+        ${regulares.length ? `<label class="campo largo" for="pl-puxar">Puxar de Minhas aulas <select id="pl-puxar"><option value="">Escolha uma aula para preencher turma, matéria e professor…</option>
+          ${regulares.map(a => `<option value="${a.id}">${esc(a.disciplina)} · ${esc(a.turma)} · ${esc(a.professor)}</option>`).join('')}</select></label>` : ''}
         <label class="campo" for="pl-turma">Turma <input id="pl-turma" data-k="turma" placeholder="Ex.: 5º Ano 4" value="${esc(p.turma)}"></label>
-        <label class="campo" for="pl-disciplina">Disciplina <input id="pl-disciplina" data-k="disciplina" placeholder="Ex.: Matemática" value="${esc(p.disciplina)}"></label>
+        <label class="campo" for="pl-disciplina">Matéria <input id="pl-disciplina" data-k="disciplina" placeholder="Ex.: Matemática" value="${esc(p.disciplina)}"></label>
         <label class="campo" for="pl-trimestre">Trimestre <select id="pl-trimestre" data-k="trimestre"><option value="">Escolha…</option>${TRI.map(t => `<option${p.trimestre === t ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
-        <label class="campo largo" for="pl-professor">Professor(a) <small>Como aparece no card do Atende (ex.: Silvana Strey Miranda). A extensão só abre o planejamento se turma, disciplina e professor baterem com o card.</small>
+        <label class="campo largo" for="pl-professor">Professor(a) <small>Como aparece no card do Atende. A extensão só abre o planejamento se turma, matéria e professor baterem com o card.</small>
           <input id="pl-professor" data-k="professor" placeholder="Ex.: Silvana Strey Miranda" value="${esc(p.professor || '')}"></label>
         <label class="campo largo" for="pl-tema">Tema do projeto <input id="pl-tema" data-k="tema" placeholder="Ex.: Frações no dia a dia" value="${esc(p.tema)}"></label>
         <label class="campo" for="pl-inicio">Data de início <input id="pl-inicio" type="date" data-k="inicio" value="${esc(p.inicio)}"></label>
@@ -235,108 +494,24 @@
       </div>
       <p class="aviso" id="pl-msg" role="status" hidden></p>`;
     let t;
-    sec.querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => {
-      p[el.dataset.k] = el.value; p.atualizado = Date.now();
-      if (['turma', 'disciplina', 'trimestre'].includes(el.dataset.k)) dados.ultimo[el.dataset.k] = el.value;
-      if (el.dataset.k === 'professor') dados.ultimo.professorPl = el.value;
+    const mudou = (k, v) => {
+      p[k] = v; p.atualizado = Date.now();
+      if (['turma', 'disciplina', 'trimestre'].includes(k)) dados.ultimo[k] = v;
+      if (k === 'professor') dados.ultimo.professorPl = v;
       clearTimeout(t); t = setTimeout(() => { $('#pl-salvo').textContent = guardar() ? 'Guardado neste computador' : 'Não consegui guardar neste navegador'; }, 400);
-    }));
+    };
+    sec.querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => mudou(el.dataset.k, el.value)));
+    const puxar = $('#pl-puxar');
+    if (puxar) puxar.onchange = () => {
+      const a = dados.aulas.find(x => x.id === puxar.value); if (!a) return;
+      for (const k of ['turma', 'disciplina', 'professor']) { $('#pl-' + k).value = a[k]; mudou(k, a[k]); }
+      sec.querySelector('h2').textContent = a.disciplina + ' · ' + a.turma;
+    };
     $('#pl-voltar').onclick = () => { editando = null; confirmandoExcluir = false; guardar(); desenharPlanejamentos(); };
     $('#pl-gerar').onclick = () => { guardar(); gerarPlanejamento(p, $('#pl-msg')); };
     $('#pl-excluir').onclick = () => {
       if (!confirmandoExcluir) { confirmandoExcluir = true; $('#pl-excluir').textContent = 'Clique de novo para excluir'; return; }
       dados.planejamentos = dados.planejamentos.filter(q => q.id !== p.id); confirmandoExcluir = false; editando = null; guardar(); desenharPlanejamentos();
-    };
-  }
-
-  // ---------- Diário (regente e educação especial) ----------
-  const semanaAberta = { diario: segunda(hojeISO()), especial: segunda(hojeISO()) };
-  const editandoDia = { diario: null, especial: null };
-
-  function desenharDiario(tipo) {
-    const sec = $('#' + tipo), lista = dados[tipo], esp = tipo === 'especial';
-    const u = dados.ultimo[tipo] || {};
-    const ed = editandoDia[tipo] ? lista.find(i => i.id === editandoDia[tipo]) : null;
-    const ini = semanaAberta[tipo], fim = somaDias(ini, 6);
-    const daSemana = lista.filter(i => i.data >= ini && i.data <= fim).sort((a, b) => a.data.localeCompare(b.data) || (a.criado || 0) - (b.criado || 0));
-    const turmas = [...new Set(daSemana.map(i => i.turma || ''))];
-    sec.innerHTML = `
-      <div><h2>${esp ? 'Diário da Educação Especial' : 'Diário'}</h2>
-        <p class="explica">${esp
-          ? 'Anote o que o seu aluno fez em cada aula. No fim da semana, gere o Word e arraste no diário da turma no Atende. O seu texto entra em Observações, depois do que a regente escreveu, sem apagar nada.'
-          : 'Anote cada aula logo depois de dar, ou tudo de uma vez no fim da semana. Depois gere o Word da semana e arraste no diário da turma no Atende.'}</p></div>
-      <form class="anotar" id="${tipo}-form">
-        <h3>${ed ? 'Editar anotação' : 'Anotar aula'}</h3>
-        <div class="linha3">
-          <label class="campo" for="${tipo}-data">Data <input type="date" id="${tipo}-data" required value="${esc(ed ? ed.data : (u.data && u.data >= ini && u.data <= fim ? u.data : hojeISO()))}"></label>
-          <label class="campo" for="${tipo}-turma">Turma <input id="${tipo}-turma" required placeholder="Ex.: 5º Ano 4" value="${esc(ed ? ed.turma : u.turma || '')}"></label>
-          <label class="campo" for="${tipo}-disciplina">Disciplina <input id="${tipo}-disciplina" required placeholder="Ex.: Matemática" value="${esc(ed ? ed.disciplina : u.disciplina || '')}"></label>
-        </div>
-        <label class="campo" for="${tipo}-professor">${esp ? 'Professora regente do diário' : 'Professor(a) do diário'} <small>${esp
-          ? 'Como aparece no card do Atende (ex.: Silvana Strey Miranda). A extensão só abre o diário se turma, matéria e professor baterem com o card.'
-          : 'Seu nome como aparece no card do Atende. A extensão só abre o diário se turma, matéria e professor baterem com o card.'}</small>
-          <input id="${tipo}-professor" required placeholder="Ex.: Silvana Strey Miranda" value="${esc(ed ? ed.professor || '' : u.professor || '')}"></label>
-        ${esp ? `
-        <label class="campo" for="${tipo}-texto">O que o aluno fez nesta aula <small>Escreva como você escreveria no Atende.</small>
-          <textarea id="${tipo}-texto" required rows="4">${esc(ed ? ed.texto : '')}</textarea></label>` : `
-        <div class="linha2">
-          <label class="campo" for="${tipo}-descricao">O que foi feito na aula <textarea id="${tipo}-descricao" required rows="4">${esc(ed ? ed.descricao : '')}</textarea></label>
-          <label class="campo" for="${tipo}-observacoes">Observações <small>Comportamento e ocorrências. Pode deixar vazio.</small><textarea id="${tipo}-observacoes" rows="4">${esc(ed ? ed.observacoes : '')}</textarea></label>
-        </div>`}
-        <div class="botoes"><button class="btn principal" type="submit">${ed ? 'Salvar alteração' : 'Guardar aula'}</button>
-          ${ed ? '<button class="btn" type="button" id="' + tipo + '-cancelar">Cancelar</button>' : ''}
-          <span class="salvo" id="${tipo}-salvo" role="status"></span></div>
-      </form>
-      <div class="semana">
-        <div class="nav"><button class="btn pequeno" id="${tipo}-ant" aria-label="Semana anterior">←</button>
-          <strong>Semana de ${brCurto(ini)} a ${brCurto(somaDias(ini, 4))}</strong>
-          <button class="btn pequeno" id="${tipo}-prox" aria-label="Próxima semana">→</button></div>
-        <div class="botoes">${daSemana.length ? `<button class="btn principal pequeno" id="${tipo}-gerar">Gerar Word da semana${turmas.length > 1 ? ' (' + turmas.length + ' turmas)' : ''}</button>` : ''}</div>
-      </div>
-      <p class="aviso" id="${tipo}-msg" role="status" hidden></p>
-      ${daSemana.length ? `<div class="tabela-wrap"><table>
-        <thead><tr><th>Data</th><th>Turma</th><th>Disciplina</th><th>Professor(a)</th>${esp ? '<th>O que o aluno fez</th>' : '<th>O que foi feito</th><th>Observações</th>'}<th></th></tr></thead>
-        <tbody>${daSemana.map(i => `<tr>
-          <td class="data">${brCurto(i.data)}<br><span class="salvo">${DIAS[deISO(i.data).getDay()]}</span></td>
-          <td>${esc(i.turma)}</td><td>${esc(i.disciplina)}</td><td>${esc(i.professor || '')}</td>
-          ${esp ? `<td><div class="quebra">${esc(i.texto)}</div></td>` : `<td><div class="quebra">${esc(i.descricao)}</div></td><td><div class="quebra">${esc(i.observacoes)}</div></td>`}
-          <td class="acoes"><button class="btn pequeno" data-editar="${i.id}">Editar</button> <button class="btn pequeno perigo" data-apagar="${i.id}">Apagar</button></td></tr>`).join('')}</tbody></table></div>`
-        : '<div class="vazio">Nenhuma aula anotada nesta semana.</div>'}`;
-
-    $(`#${tipo}-form`).addEventListener('submit', ev => {
-      ev.preventDefault();
-      const v = id => $(`#${tipo}-${id}`).value.trim();
-      const item = ed || { id: novoId(), criado: Date.now() };
-      item.data = v('data'); item.turma = v('turma'); item.disciplina = v('disciplina'); item.professor = v('professor');
-      if (esp) item.texto = v('texto'); else { item.descricao = v('descricao'); item.observacoes = v('observacoes'); }
-      if (!item.data) return;
-      if (!ed) lista.push(item);
-      dados.ultimo[tipo] = { turma: item.turma, disciplina: item.disciplina, professor: item.professor, data: item.data };
-      editandoDia[tipo] = null;
-      semanaAberta[tipo] = segunda(item.data);
-      const ok = guardar();
-      desenharDiario(tipo);
-      $(`#${tipo}-salvo`).textContent = ok ? `Aula de ${brCurto(item.data)} guardada.` : 'Não consegui guardar neste navegador.';
-      const prox = $(`#${tipo}-data`); if (prox) prox.value = somaDias(item.data, deISO(item.data).getDay() === 5 ? 3 : 1);
-      $(`#${tipo}-${esp ? 'texto' : 'descricao'}`).focus();
-    });
-    const canc = $(`#${tipo}-cancelar`); if (canc) canc.onclick = () => { editandoDia[tipo] = null; desenharDiario(tipo); };
-    $(`#${tipo}-ant`).onclick = () => { semanaAberta[tipo] = somaDias(ini, -7); desenharDiario(tipo); };
-    $(`#${tipo}-prox`).onclick = () => { semanaAberta[tipo] = somaDias(ini, 7); desenharDiario(tipo); };
-    sec.querySelectorAll('[data-editar]').forEach(b => b.onclick = () => { editandoDia[tipo] = b.dataset.editar; desenharDiario(tipo); window.scrollTo(0, 0); });
-    sec.querySelectorAll('[data-apagar]').forEach(b => b.onclick = () => {
-      if (b.dataset.certeza !== '1') { b.dataset.certeza = '1'; b.textContent = 'Tem certeza?'; return; }
-      dados[tipo] = dados[tipo].filter(i => i.id !== b.dataset.apagar); guardar(); desenharDiario(tipo);
-    });
-    const gerar = $(`#${tipo}-gerar`);
-    if (gerar) gerar.onclick = async () => {
-      const ordem = [...daSemana].sort((a, b) => (a.turma || '').localeCompare(b.turma || '') || (a.disciplina || '').localeCompare(b.disciplina || '') || (a.professor || '').localeCompare(b.professor || '') || a.data.localeCompare(b.data));
-      const nome = limpaNome(`Diário ${esp ? 'Educação Especial ' : ''}semana ${brCurto(ini).replace('/', '-')}`) + '.docx';
-      const r = await baixar(nome, wordDiario(tipo, ordem));
-      const m = $(`#${tipo}-msg`);
-      m.className = r === 'ok' ? 'aviso ok' : 'aviso'; m.hidden = false;
-      m.textContent = r === 'ok' ? `Word gerado: ${nome}. No Atende, abra a Área do Professor (Diários de Classe) e arraste o arquivo no botão azul. A extensão abre cada turma e matéria e salva os dias.`
-        : r === 'cancelado' ? 'Você cancelou o download.' : 'Não consegui gerar o arquivo neste navegador.';
     };
   }
 
@@ -351,12 +526,15 @@
     const f = e.target.files[0]; if (!f) return;
     try {
       const s = JSON.parse(await f.text());
-      if (!s || !Array.isArray(s.planejamentos) || !Array.isArray(s.diario)) throw new Error();
-      // junta com o que já tem, sem duplicar
-      for (const k of ['planejamentos', 'diario', 'especial']) {
-        const ids = new Set(dados[k].map(i => i.id));
-        for (const i of s[k] || []) if (!ids.has(i.id)) dados[k].push(i);
-      }
+      if (!s || !Array.isArray(s.planejamentos) || !(Array.isArray(s.diario) || Array.isArray(s.aulas))) throw new Error();
+      // junta com o que já tem, sem duplicar nem trocar o que já está aqui
+      const ids = new Set(dados.planejamentos.map(i => i.id));
+      for (const i of s.planejamentos) if (!ids.has(i.id)) dados.planejamentos.push(i);
+      if (Array.isArray(s.aulas)) {
+        const aIds = new Set(dados.aulas.map(a => a.id));
+        for (const a of s.aulas) if (!aIds.has(a.id)) dados.aulas.push(a);
+        for (const [k, r] of Object.entries(s.registros || {})) if (!dados.registros[k]) dados.registros[k] = r;
+      } else importarAntigo(s);
       guardar();
       $('#backup-msg').textContent = 'Cópia restaurada.';
       abrirAba(ABAS.find(a => !$('#' + a).hidden));
@@ -367,8 +545,17 @@
   // Para os testes conferirem o Word gerado
   window.PlanejamentoSite = { wordPlanejamento, wordDiario };
 
-  let inicial = 'inicio';
-  try { inicial = localStorage.getItem(CHAVE + '-aba') || 'inicio'; } catch (e) { }
+  let inicial = 'diario';
+  try { inicial = localStorage.getItem(CHAVE + '-aba') || 'diario'; } catch (e) { }
+  if (!dados.aulas.length && !dados.planejamentos.length && inicial === 'diario') inicial = 'diario';
   abrirAba(inicial);
   if (avisoSemGuardar) $('#backup-msg').textContent = 'Este navegador não deixa guardar. O que você escrever some ao fechar.';
+
+  (async () => {
+    if (!CHAVE_PUBLICA) { mostrarLicenca(null); $('#app').hidden = false; return; }
+    const t = await chaveGuardada();
+    const c = t ? await lerChave(t) : { ok: false, erro: '' };
+    if (c.ok) { mostrarLicenca(c); $('#app').hidden = false; }
+    else abrirPortao(c.erro);
+  })();
 })();
