@@ -114,19 +114,18 @@
     return docx(c, false);
   }
 
-  function wordDiario(tipo, turma, itens) {
+  function wordDiario(tipo, itens) {
+    const turmas = [...new Set(itens.map(i => i.turma || ''))];
     let c = par(tipo === 'especial' ? 'DIÁRIO DA SEMANA · EDUCAÇÃO ESPECIAL' : 'DIÁRIO DA SEMANA', { b: true, tam: 20, centro: true, cor: '1F4E79', depois: 4 });
-    c += dica(tipo === 'especial'
-      ? 'Gerado pelo site Planejamento Fácil. No Atende, o texto entra em Observações, depois do que já estiver no dia. Não mude os títulos das colunas.'
-      : 'Gerado pelo site Planejamento Fácil. No Atende, abra o diário da turma e arraste este arquivo para o botão azul. Não mude os títulos das colunas.');
-    c += tabela([1800, 5400], [['Turma', turma]], false);
-    c += par('');
+    c += dica('Gerado pelo site Planejamento Fácil. No Atende, abra a Área do Professor (Diários de Classe) e arraste este arquivo no botão azul: a extensão abre o diário de cada turma e matéria. Não mude os títulos das colunas.'
+      + (tipo === 'especial' ? ' O texto entra em Observações, depois do que já estiver no dia.' : ''));
+    if (turmas.length === 1) { c += tabela([1800, 5400], [['Turma', turmas[0]]], false); c += par(''); }
     if (tipo === 'especial') {
-      c += tabela([1700, 2800, 10400], [['Data', 'Disciplina', 'O que o aluno fez (Educação Especial)'],
-        ...itens.map(i => [br(i.data), i.disciplina, i.texto])], true);
+      c += tabela([1400, 1700, 2300, 2700, 6800], [['Data', 'Turma', 'Disciplina', 'Professor(a)', 'O que o aluno fez (Educação Especial)'],
+        ...itens.map(i => [br(i.data), i.turma, i.disciplina, i.professor || '', i.texto])], true);
     } else {
-      c += tabela([1600, 2600, 6800, 3900], [['Data', 'Disciplina', 'O que foi feito na aula', 'Observações'],
-        ...itens.map(i => [br(i.data), i.disciplina, i.descricao, i.observacoes])], true);
+      c += tabela([1300, 1600, 2100, 2500, 4900, 2500], [['Data', 'Turma', 'Disciplina', 'Professor(a)', 'O que foi feito na aula', 'Observações'],
+        ...itens.map(i => [br(i.data), i.turma, i.disciplina, i.professor || '', i.descricao, i.observacoes])], true);
     }
     return docx(c, true);
   }
@@ -268,8 +267,12 @@
         <div class="linha3">
           <label class="campo" for="${tipo}-data">Data <input type="date" id="${tipo}-data" required value="${esc(ed ? ed.data : (u.data && u.data >= ini && u.data <= fim ? u.data : hojeISO()))}"></label>
           <label class="campo" for="${tipo}-turma">Turma <input id="${tipo}-turma" required placeholder="Ex.: 5º Ano 4" value="${esc(ed ? ed.turma : u.turma || '')}"></label>
-          <label class="campo" for="${tipo}-disciplina">Disciplina <input id="${tipo}-disciplina" placeholder="Ex.: Matemática" value="${esc(ed ? ed.disciplina : u.disciplina || '')}"></label>
+          <label class="campo" for="${tipo}-disciplina">Disciplina <input id="${tipo}-disciplina" required placeholder="Ex.: Matemática" value="${esc(ed ? ed.disciplina : u.disciplina || '')}"></label>
         </div>
+        <label class="campo" for="${tipo}-professor">${esp ? 'Professora regente do diário' : 'Professor(a) do diário'} <small>${esp
+          ? 'Como aparece no card do Atende (ex.: Silvana Strey Miranda). A extensão só abre o diário se turma, matéria e professor baterem com o card.'
+          : 'Seu nome como aparece no card do Atende. A extensão só abre o diário se turma, matéria e professor baterem com o card.'}</small>
+          <input id="${tipo}-professor" required placeholder="Ex.: Silvana Strey Miranda" value="${esc(ed ? ed.professor || '' : u.professor || '')}"></label>
         ${esp ? `
         <label class="campo" for="${tipo}-texto">O que o aluno fez nesta aula <small>Escreva como você escreveria no Atende.</small>
           <textarea id="${tipo}-texto" required rows="4">${esc(ed ? ed.texto : '')}</textarea></label>` : `
@@ -285,14 +288,14 @@
         <div class="nav"><button class="btn pequeno" id="${tipo}-ant" aria-label="Semana anterior">←</button>
           <strong>Semana de ${brCurto(ini)} a ${brCurto(somaDias(ini, 4))}</strong>
           <button class="btn pequeno" id="${tipo}-prox" aria-label="Próxima semana">→</button></div>
-        <div class="botoes">${turmas.length ? turmas.map(t => `<button class="btn principal pequeno" data-gerar="${esc(t)}">Gerar Word${turmas.length > 1 ? ' · ' + esc(t || 'sem turma') : ' da semana'}</button>`).join('') : ''}</div>
+        <div class="botoes">${daSemana.length ? `<button class="btn principal pequeno" id="${tipo}-gerar">Gerar Word da semana${turmas.length > 1 ? ' (' + turmas.length + ' turmas)' : ''}</button>` : ''}</div>
       </div>
       <p class="aviso" id="${tipo}-msg" role="status" hidden></p>
       ${daSemana.length ? `<div class="tabela-wrap"><table>
-        <thead><tr><th>Data</th><th>Turma</th><th>Disciplina</th>${esp ? '<th>O que o aluno fez</th>' : '<th>O que foi feito</th><th>Observações</th>'}<th></th></tr></thead>
+        <thead><tr><th>Data</th><th>Turma</th><th>Disciplina</th><th>Professor(a)</th>${esp ? '<th>O que o aluno fez</th>' : '<th>O que foi feito</th><th>Observações</th>'}<th></th></tr></thead>
         <tbody>${daSemana.map(i => `<tr>
           <td class="data">${brCurto(i.data)}<br><span class="salvo">${DIAS[deISO(i.data).getDay()]}</span></td>
-          <td>${esc(i.turma)}</td><td>${esc(i.disciplina)}</td>
+          <td>${esc(i.turma)}</td><td>${esc(i.disciplina)}</td><td>${esc(i.professor || '')}</td>
           ${esp ? `<td><div class="quebra">${esc(i.texto)}</div></td>` : `<td><div class="quebra">${esc(i.descricao)}</div></td><td><div class="quebra">${esc(i.observacoes)}</div></td>`}
           <td class="acoes"><button class="btn pequeno" data-editar="${i.id}">Editar</button> <button class="btn pequeno perigo" data-apagar="${i.id}">Apagar</button></td></tr>`).join('')}</tbody></table></div>`
         : '<div class="vazio">Nenhuma aula anotada nesta semana.</div>'}`;
@@ -301,11 +304,11 @@
       ev.preventDefault();
       const v = id => $(`#${tipo}-${id}`).value.trim();
       const item = ed || { id: novoId(), criado: Date.now() };
-      item.data = v('data'); item.turma = v('turma'); item.disciplina = v('disciplina');
+      item.data = v('data'); item.turma = v('turma'); item.disciplina = v('disciplina'); item.professor = v('professor');
       if (esp) item.texto = v('texto'); else { item.descricao = v('descricao'); item.observacoes = v('observacoes'); }
       if (!item.data) return;
       if (!ed) lista.push(item);
-      dados.ultimo[tipo] = { turma: item.turma, disciplina: item.disciplina, data: item.data };
+      dados.ultimo[tipo] = { turma: item.turma, disciplina: item.disciplina, professor: item.professor, data: item.data };
       editandoDia[tipo] = null;
       semanaAberta[tipo] = segunda(item.data);
       const ok = guardar();
@@ -322,15 +325,16 @@
       if (b.dataset.certeza !== '1') { b.dataset.certeza = '1'; b.textContent = 'Tem certeza?'; return; }
       dados[tipo] = dados[tipo].filter(i => i.id !== b.dataset.apagar); guardar(); desenharDiario(tipo);
     });
-    sec.querySelectorAll('[data-gerar]').forEach(b => b.onclick = async () => {
-      const turma = b.dataset.gerar, itens = daSemana.filter(i => (i.turma || '') === turma);
-      const nome = limpaNome(`Diário ${esp ? 'Educação Especial ' : ''}${turma} semana ${brCurto(ini).replace('/', '-')}`) + '.docx';
-      const r = await baixar(nome, wordDiario(tipo, turma, itens));
+    const gerar = $(`#${tipo}-gerar`);
+    if (gerar) gerar.onclick = async () => {
+      const ordem = [...daSemana].sort((a, b) => (a.turma || '').localeCompare(b.turma || '') || (a.disciplina || '').localeCompare(b.disciplina || '') || (a.professor || '').localeCompare(b.professor || '') || a.data.localeCompare(b.data));
+      const nome = limpaNome(`Diário ${esp ? 'Educação Especial ' : ''}semana ${brCurto(ini).replace('/', '-')}`) + '.docx';
+      const r = await baixar(nome, wordDiario(tipo, ordem));
       const m = $(`#${tipo}-msg`);
       m.className = r === 'ok' ? 'aviso ok' : 'aviso'; m.hidden = false;
-      m.textContent = r === 'ok' ? `Word gerado: ${nome}. No Atende, abra o diário da ${turma}, arraste o arquivo no botão azul, marque os dias e clique em “Preencher e salvar os marcados”.`
+      m.textContent = r === 'ok' ? `Word gerado: ${nome}. No Atende, abra a Área do Professor (Diários de Classe) e arraste o arquivo no botão azul. A extensão abre cada turma e matéria e salva os dias.`
         : r === 'cancelado' ? 'Você cancelou o download.' : 'Não consegui gerar o arquivo neste navegador.';
-    });
+    };
   }
 
   // ---------- Cópia de segurança ----------
