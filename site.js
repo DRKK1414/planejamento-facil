@@ -104,7 +104,7 @@
     let c = par('PLANEJAMENTO', { b: true, tam: 20, centro: true, cor: '1F4E79', depois: 4 });
     c += dica('Gerado pelo site Planejamento Fácil. Não mude os títulos em azul nem a primeira coluna da tabela: a extensão usa esses títulos para saber onde colar cada parte.');
     c += titulo('Cabeçalho');
-    c += tabela([2800, 6800], [['Turma', p.turma], ['Disciplina', p.disciplina], ['Trimestre', p.trimestre], ['Tema/Projeto', p.tema],
+    c += tabela([2800, 6800], [['Turma', p.turma], ['Disciplina', p.disciplina], ['Professor(a)', p.professor || ''], ['Trimestre', p.trimestre], ['Tema/Projeto', p.tema],
       ['Data início', br(p.inicio) || 'dd/mm/aaaa'], ['Data término', br(p.termino) || 'dd/mm/aaaa']], false);
     for (const [k, nome, d] of SECOES) {
       c += titulo(nome);
@@ -183,7 +183,7 @@
         : '<div class="vazio">Nenhum planejamento ainda. Clique em “Novo planejamento” para começar.</div>'}</div>`;
     $('#pl-novo').onclick = () => {
       const u = dados.ultimo;
-      const p = { id: novoId(), turma: u.turma || '', disciplina: u.disciplina || '', trimestre: u.trimestre || '', tema: '', inicio: '', termino: '', atualizado: Date.now() };
+      const p = { id: novoId(), turma: u.turma || '', disciplina: u.disciplina || '', trimestre: u.trimestre || '', professor: u.professorPl || '', tema: '', inicio: '', termino: '', atualizado: Date.now() };
       SECOES.forEach(([k]) => p[k] = '');
       dados.planejamentos.push(p); guardar(); editando = p.id; desenharPlanejamentos();
     };
@@ -193,7 +193,7 @@
 
   function faltandoPlanejamento(p) {
     const f = [];
-    if (!p.turma) f.push('Turma'); if (!p.disciplina) f.push('Disciplina'); if (!p.trimestre) f.push('Trimestre');
+    if (!p.turma) f.push('Turma'); if (!p.disciplina) f.push('Disciplina'); if (!p.professor) f.push('Professor(a)'); if (!p.trimestre) f.push('Trimestre');
     if (!p.tema) f.push('Tema/Projeto'); if (!p.inicio) f.push('Data de início'); if (!p.termino) f.push('Data de término');
     return f;
   }
@@ -203,7 +203,7 @@
     const r = await baixar(nome, wordPlanejamento(p));
     if (msgEl) {
       msgEl.className = r === 'ok' ? 'aviso ok' : 'aviso';
-      msgEl.textContent = r === 'ok' ? `Word gerado: ${nome}. Agora arraste no Atende.${f.length ? ' Ainda falta preencher: ' + f.join(', ') + '.' : ''}`
+      msgEl.textContent = r === 'ok' ? `Word gerado: ${nome}. No Atende, abra a Área do Professor na aba Planejamentos e arraste o arquivo no botão azul: a extensão acha o card, abre o Incluir Projeto e preenche. Quem confirma é você.${f.length ? ' Ainda falta preencher: ' + f.join(', ') + '.' : ''}`
         : r === 'cancelado' ? 'Você cancelou o download.' : 'Não consegui gerar o arquivo neste navegador.';
       msgEl.hidden = false;
     }
@@ -220,6 +220,8 @@
         <label class="campo" for="pl-turma">Turma <input id="pl-turma" data-k="turma" placeholder="Ex.: 5º Ano 4" value="${esc(p.turma)}"></label>
         <label class="campo" for="pl-disciplina">Disciplina <input id="pl-disciplina" data-k="disciplina" placeholder="Ex.: Matemática" value="${esc(p.disciplina)}"></label>
         <label class="campo" for="pl-trimestre">Trimestre <select id="pl-trimestre" data-k="trimestre"><option value="">Escolha…</option>${TRI.map(t => `<option${p.trimestre === t ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="campo largo" for="pl-professor">Professor(a) <small>Como aparece no card do Atende (ex.: Silvana Strey Miranda). A extensão só abre o planejamento se turma, disciplina e professor baterem com o card.</small>
+          <input id="pl-professor" data-k="professor" placeholder="Ex.: Silvana Strey Miranda" value="${esc(p.professor || '')}"></label>
         <label class="campo largo" for="pl-tema">Tema do projeto <input id="pl-tema" data-k="tema" placeholder="Ex.: Frações no dia a dia" value="${esc(p.tema)}"></label>
         <label class="campo" for="pl-inicio">Data de início <input id="pl-inicio" type="date" data-k="inicio" value="${esc(p.inicio)}"></label>
         <label class="campo" for="pl-termino">Data de término <input id="pl-termino" type="date" data-k="termino" value="${esc(p.termino)}"></label>
@@ -236,6 +238,7 @@
     sec.querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => {
       p[el.dataset.k] = el.value; p.atualizado = Date.now();
       if (['turma', 'disciplina', 'trimestre'].includes(el.dataset.k)) dados.ultimo[el.dataset.k] = el.value;
+      if (el.dataset.k === 'professor') dados.ultimo.professorPl = el.value;
       clearTimeout(t); t = setTimeout(() => { $('#pl-salvo').textContent = guardar() ? 'Guardado neste computador' : 'Não consegui guardar neste navegador'; }, 400);
     }));
     $('#pl-voltar').onclick = () => { editando = null; confirmandoExcluir = false; guardar(); desenharPlanejamentos(); };
